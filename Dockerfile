@@ -7,6 +7,8 @@ ARG TARGETARCH
 ENV LANG="C.UTF-8"
 ENV HOME=/root
 ENV DEBIAN_FRONTEND=noninteractive
+# Crucial for Codex CLI to run inside a container
+ENV CODEX_UNSAFE_ALLOW_NO_SANDBOX=1 
 
 ### BASE ###
 
@@ -77,97 +79,70 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         zip=3.0-* \
         zlib1g=1:1.3.* \
         zlib1g-dev=1:1.3.* \
-        fd-find=9.0.* \
-        universal-ctags=5.9.* \
     && rm -rf /var/lib/apt/lists/*
 
 ### PYTHON ###
 
 ARG PYTHON_VERSIONS="3.12"
-
-# Install pyenv
 ENV PYENV_ROOT=/root/.pyenv
-ENV PATH=$PYENV_ROOT/bin:$PATH
-RUN git -c advice.detachedHead=0 clone --depth 1 https://github.com/pyenv/pyenv.git "$PYENV_ROOT" \
-    && echo 'export PYENV_ROOT="$HOME/.pyenv"' >> /etc/profile \
-    && echo 'export PATH="$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH"' >> /etc/profile \
-    && echo 'eval "$(pyenv init - bash)"' >> /etc/profile \
-    && cd "$PYENV_ROOT" \
-    && src/configure \
-    && make -C src \
+ENV PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
+
+RUN git -c advice.detachedHead=0 clone --depth 1 https://github.com "$PYENV_ROOT" \
+    && cd "$PYENV_ROOT" && src/configure && make -C src \
     && pyenv install $PYTHON_VERSIONS \
+    && pyenv global $PYTHON_VERSIONS \
     && rm -rf "$PYENV_ROOT/cache"
 
-# Install pipx for common global package managers (e.g. poetry)
+# Install pipx & global tools
 ENV PIPX_BIN_DIR=/root/.local/bin
 ENV PATH=$PIPX_BIN_DIR:$PATH
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/root/.cache/pipx \
-    apt-get update \
-    && apt-get install -y --no-install-recommends pipx=1.4.* \
-    && rm -rf /var/lib/apt/lists/* \
-    && pipx install --pip-args="--no-cache-dir --no-compile --root-user-action=ignore" poetry==2.1.* uv==0.7.* \
-    && for pyv in "${PYENV_ROOT}/versions/"*; do \
-         "$pyv/bin/python" -m pip install --no-cache-dir --no-compile --root-user-action=ignore --upgrade pip && \
-         "$pyv/bin/pip" install --no-cache-dir --no-compile --root-user-action=ignore ruff black mypy pyright isort pytest; \
-       done
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip \
+    && pip install pipx \
+    && pipx install poetry==2.1.* \
+    && pipx install uv==0.7.* \
+    && pip install ruff black mypy pyright isort pytest
 
-# Reduce the verbosity of uv - impacts performance of stdout buffering
 ENV UV_NO_PROGRESS=1
 
-### NODE ###
+### NODE & CODEX ###
 
 ARG NVM_VERSION=v0.40.2
 ARG NODE_VERSION=22
-ARG NODE_VERSIONS="22"
-
 ENV NVM_DIR=/root/.nvm
-# Corepack tries to do too much - disable some of its features:
-# https://github.com/nodejs/corepack/blob/main/README.md
-ENV COREPACK_DEFAULT_TO_LATEST=0
-ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
-ENV COREPACK_ENABLE_AUTO_PIN=0
-ENV COREPACK_ENABLE_STRICT=0
+# Ensure node binaries are in path immediately
+ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 RUN --mount=type=cache,target=/root/.npm \
-    --mount=type=cache,target=/root/.cache/yarn \
-    --mount=type=cache,target=/root/.local/share/pnpm/store \
-    git -c advice.detachedHead=0 clone --branch "$NVM_VERSION" --depth 1 https://github.com/nvm-sh/nvm.git "$NVM_DIR" \
-    && echo 'source $NVM_DIR/nvm.sh' >> /etc/profile \
-    && echo "prettier\neslint\ntypescript" > $NVM_DIR/default-packages \
+    git -c advice.detachedHead=0 clone --branch "$NVM_VERSION" --depth 1 https://github.com "$NVM_DIR" \
     && . $NVM_DIR/nvm.sh \
-    # The latest versions of npm aren't supported on node 18, so we install each set differently
-    # && nvm install 18 && nvm use 18 && npm install -g npm@10.9 pnpm@10.12 && corepack enable && corepack install -g yarn \
-    # && nvm install 20 && nvm use 20 && npm install -g npm@11.4 pnpm@10.12 && corepack enable && corepack install -g yarn \
-    && nvm install 22 && nvm use 22 && npm install -g npm@11.4 pnpm@10.12 && corepack enable && corepack install -g yarn \
-    # && nvm install 24 && nvm use 24 && npm install -g npm@11.4 pnpm@10.12 && corepack enable && corepack install -g yarn \
-    && nvm alias default "$NODE_VERSION" \
-    && nvm cache clear \
-    && npm cache clean --force || true \
-    && pnpm store prune || true \
-    && yarn cache clean || true
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default \
+    # Install Codex CLI and build tools
+    && npm install -g npm@latest pnpm@latest @openai/codex \
+    && corepack enable \
+    && nvm cache clear
 
-### SETUP SCRIPTS ###
+# Copy the custom bashrc to the root user's home
+COPY .bashrc /root/.bashrc
 
+# Ensure the entrypoint and bashrc are synced
+RUN echo "source /root/.bashrc" >> /etc/bash.bashrc
+
+### SETUP & ENTRYPOINT ###
+
+WORKDIR /workspace
+
+# Copy your scripts
 COPY setup_universal.sh /opt/codex/setup_universal.sh
-RUN chmod +x /opt/codex/setup_universal.sh
-
-### VERIFICATION SCRIPT ###
-
 COPY verify.sh /opt/verify.sh
-RUN chmod +x /opt/verify.sh \
-    && PYTHON_VERSIONS="$PYTHON_VERSIONS" \
-        NODE_VERSIONS="$NODE_VERSIONS" \
-        "/opt/verify.sh"
-
-### Install Codex CLI ###
-RUN npm install -g @openai/codex
-
-### ENTRYPOINT ###
-
 COPY entrypoint.sh /opt/entrypoint.sh
-RUN chmod +x /opt/entrypoint.sh
 
-ENTRYPOINT  ["/opt/entrypoint.sh"]
+RUN chmod +x /opt/codex/setup_universal.sh /opt/verify.sh /opt/entrypoint.sh \
+    && /opt/verify.sh
+
+# The entrypoint will handle the runtime switching logic you wrote
+ENTRYPOINT ["/opt/entrypoint.sh"]
+# Default to running the codex CLI
+CMD ["codex"]
