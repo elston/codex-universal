@@ -162,6 +162,9 @@ RUN chmod +x /opt/verify.sh \
         NODE_VERSIONS="$NODE_VERSIONS" \
         "/opt/verify.sh"
 
+### Install Codex CLI ###
+RUN npm install -g @openai/codex
+
 ### ENTRYPOINT ###
 
 COPY entrypoint.sh /opt/entrypoint.sh
