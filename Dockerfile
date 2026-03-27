@@ -87,7 +87,7 @@ ARG PYTHON_VERSIONS="3.12"
 ENV PYENV_ROOT=/root/.pyenv
 ENV PATH=$PYENV_ROOT/shims:$PYENV_ROOT/bin:$PATH
 
-RUN git -c advice.detachedHead=0 clone --depth 1 https://github.com "$PYENV_ROOT" \
+RUN git -c advice.detachedHead=0 clone --depth 1 https://github.com/pyenv/pyenv.git "$PYENV_ROOT"  \
     && cd "$PYENV_ROOT" && src/configure && make -C src \
     && pyenv install $PYTHON_VERSIONS \
     && pyenv global $PYTHON_VERSIONS \
@@ -114,7 +114,7 @@ ENV NVM_DIR=/root/.nvm
 ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 RUN --mount=type=cache,target=/root/.npm \
-    git -c advice.detachedHead=0 clone --branch "$NVM_VERSION" --depth 1 https://github.com "$NVM_DIR" \
+    git -c advice.detachedHead=0 clone --branch "$NVM_VERSION" --depth 1 https://github.com/nvm-sh/nvm.git "$NVM_DIR" \
     && . $NVM_DIR/nvm.sh \
     && nvm install $NODE_VERSION \
     && nvm alias default $NODE_VERSION \
