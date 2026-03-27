@@ -110,19 +110,34 @@ ENV UV_NO_PROGRESS=1
 ARG NVM_VERSION=v0.40.2
 ARG NODE_VERSION=22
 ENV NVM_DIR=/root/.nvm
+
+# Corepack tries to do too much - disable some of its features:
+# https://github.com/nodejs/corepack/blob/main/README.md
+ENV COREPACK_DEFAULT_TO_LATEST=0
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+ENV COREPACK_ENABLE_AUTO_PIN=0
+ENV COREPACK_ENABLE_STRICT=0
+
 # Ensure node binaries are in path immediately
 ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,target=/root/.cache/yarn \
+    --mount=type=cache,target=/root/.local/share/pnpm/store \
     git -c advice.detachedHead=0 clone --branch "$NVM_VERSION" --depth 1 https://github.com/nvm-sh/nvm.git "$NVM_DIR" \
+    && echo 'source $NVM_DIR/nvm.sh' >> /etc/profile \
+    && echo "prettier\neslint\ntypescript" > $NVM_DIR/default-packages \
     && . $NVM_DIR/nvm.sh \
-    && nvm install $NODE_VERSION \
-    && nvm alias default $NODE_VERSION \
-    && nvm use default \
-    # Install Codex CLI and build tools
-    && npm install -g npm@latest pnpm@latest @openai/codex \
+    && nvm install "$NODE_VERSION" \
+    && nvm use "$NODE_VERSION" \
+    && npm install -g npm@11.4 pnpm@10.12 @openai/codex \
     && corepack enable \
-    && nvm cache clear
+    && corepack install -g yarn \
+    && nvm alias default "$NODE_VERSION" \
+    && npm cache clean --force || true \
+    && pnpm store prune || true \
+    && yarn cache clean || true
+
 
 # Copy the custom bashrc to the root user's home
 COPY .bashrc /root/.bashrc

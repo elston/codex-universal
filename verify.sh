@@ -4,8 +4,8 @@ set -euo pipefail
 
 echo "Verifying language runtimes ..."
 
-read -ra PYTHON <<< "$PYTHON_VERSIONS"
-read -ra NODE   <<< "$NODE_VERSIONS"
+read -ra PYTHON <<< "${PYTHON_VERSIONS:-${PYTHON_VERSION:-}}"
+read -ra NODE   <<< "${NODE_VERSIONS:-${NODE_VERSION:-}}"
 
 max=$(printf "%s\n" \
   ${#PYTHON[@]} \
