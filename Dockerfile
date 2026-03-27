@@ -144,5 +144,6 @@ RUN chmod +x /opt/codex/setup_universal.sh /opt/verify.sh /opt/entrypoint.sh \
 
 # The entrypoint will handle the runtime switching logic you wrote
 ENTRYPOINT ["/opt/entrypoint.sh"]
+
 # Default to running the codex CLI
 CMD ["codex"]
