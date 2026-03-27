@@ -34,7 +34,4 @@ pnpm --version
 yarn --version
 npm ls -g
 
-echo "- Bun:"
-bun --version
-
 echo "All language runtimes detected successfully."
